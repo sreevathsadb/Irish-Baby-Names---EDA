@@ -1,0 +1,614 @@
+---
+title: "ST661 Mini Project 1"
+author: "KA HENG LAU, KARTHIKEYAN SUNDARAM, SREEVATHSA DEVANAHALLIBOKKSAM, JONATHON FAY"
+output: 
+  bookdown::html_document2:
+    keep_tex: true
+    base_format: webexercises::webexercises_default
+    theme: cosmo
+    number_sections: false
+    code_folding: hide
+runtime: shiny
+---
+<style type="text/css">
+  body{
+  font-size: 13pt;
+}
+</style>
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Irish babynames{.tabset .tabset-pills}
+
+## Introduction {.tabset .tabset-pills}
+
+This Statistical report provides an overview of Irish baby names from 1964 to 2020. The datasets VSA50 and VSA60 contain the count data of baby names registered in Ireland from 1964 to 2020 with more than 3 occurrences and their rank. VSA50 and VSA60 are split into data on boys and girls respectively. Supplementary datasets VSA10 and VSA11 contained the ranking of the top baby names. These were obtained from the Central Statistics Office.
+Going into this project, there were a few questions considered to guide our analysis. 
+These were: \
+* What are the general trends of the data by year?\
+* Is there a gender imbalance in the number of births?\
+* What are the top 10 names over the 56 year period and how does this change with time?\
+* Are there patterns in the structure of names?\
+* How many different names are there?\
+* What names had strange jumps in popularity?\
+* What other subsets of the data can show interesting trends?\
+
+The main methods used were various time series plots to examine the changes over the years.\
+
+**Authors’ statements :**
+
+I KA HENG LAU had primary responsibility for the material in section Conclusion and Individual Name Popularities under Data Analysis tab.\
+I KARTHIKEYAN SUNDARAM had primary responsibility for the material in Birth Trends and Most Popular Names under Data Analysis tab.\
+I SREEVATHSA DEVANAHALLIBOKKSAM had primary responsibility for the material in  Dataset Overview and Gender-Neutral & Immigration under Data Analysis tab.\
+I JONATHON FAY had primary responsibility for the material in the Introduction section and Analysis of the Names under Data Analysis tab.\
+
+## Packages used{.tabset .tabset-pills}
+The packages used throughout this project were:\
+**ggplot2** - To plot graphs.\
+**dplyr** - Used for data manipulation.\
+**csodata** - Used to download CSO (Central Statistics Office, the National Statistics Institute of Ireland) PxStat data into R.\
+**tidyverse** - Used for reading and manipulation.\
+**gridextra** - To display graphs in a grid format.\
+**wordcloud2** - To generate wordclouds.\
+**gganimate & gifski** - To generate animated graphs.\
+**shiny** - Used to plot interactive charts\
+```{r,message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library("csodata")
+library(tidyverse)
+library(tidyr)
+library(gridExtra)
+library(wordcloud2)
+library(gganimate)
+library(gifski)
+```
+## Dataset Overview{.tabset .tabset-pills}
+### Data Import{.tabset .tabset-pills}
+__Source of Data__ : https://data.gov.ie/dataset/vsa50-boys-names-in-ireland-with-3-or-more-occurrences
+\
+                     https://data.gov.ie/dataset/vsa60-girls-names-in-ireland-with-3-or-more-occurrences
+\
+
+__Dataset Name__ : VSA50,VSA60
+\
+
+__Import command__ : boys_actual <- cso_get_data("VSA50")
+                    grls_actual<- cso_get_data("VSA60")
+\
+The column names of the dataset is as shown below.\
+```{r,message=FALSE, warning=FALSE}
+options(width = 120)
+boys_actual <- cso_get_data("VSA50")
+grls_actual<- cso_get_data("VSA60")
+#Columns in dataset
+colnames(boys_actual)
+```
+
+### Data Cleansing{.tabset .tabset-pills}
+
+The VSA10 dataset is a subset of VSA50 and similarly,  VSA11 is a subset of  VSA60, hence it was decided to consider the large data-set (VSA50,VSA60) for boys and girls baby names for our analysis.
+
+__Data Cleaning__ : 
+
+1.The data-set is flawless and no data cleaning was necessary, however some data transformations were required. The values seem to be meaningful and there are no missing or invalid values in the data-set. \
+2. As the data frame contains both rank and count data, the sets were split by the factor labelled statistic to access the count data primarily. The sets for boys(VSA50) and girls(VSA60) were then merged to produce a single data set.\
+__Transformations Invloved__ 
+\
+
+1. Converted NA's to zero's.\
+2. Reshaped the data set such that the year columns were converted to rows to perform aggregation.\
+3. Introduced a Gender column for the combined data set and converted it to factors.\
+4. Converted the total counts to integer value and year column to numeric values.\
+5. Added Contribution column on all the rows for aggregation purpose.\
+6. For name origin analysis, a few samples of African, Asian, Greek and Spanish baby names were manually gathered and put into a subset from main dataset.\
+7. Utilised joins to construct a data frame for our analysis.\
+The levels of the datasets are as shown below:\
+```{r}
+#Levels for boys raw dataset 
+levels(boys_actual$Statistic)
+#Levels for girls raw dataset
+levels(grls_actual$Statistic)
+```
+
+```{r,message=FALSE, warning=FALSE}
+#Getting the boys data from VSA50
+boys_actual <- cso_get_data("VSA50")
+boys1 <- subset(boys_actual,boys_actual$Statistic=="Boys Names in Ireland with 3 or More Occurrences")
+boys1[is.na(boys1)]<-0
+boys <- boys1 %>% gather(Year, Total, (colnames(boys1[-c(1,2)])))
+boys$Gender<-"Boy"
+boys$Total<-sapply(boys$Total,as.integer)
+boys$Year<-sapply(boys$Year,as.numeric)
+boys<- subset(boys, select = -c(Statistic))
+#Getting the girls data from VSA60
+grls_actual<- cso_get_data("VSA60")
+grls <- subset(grls_actual,grls_actual$Statistic=="Girls Names in Ireland with 3 or More Occurrences")
+grls[is.na(grls)]<-0
+girls <- grls %>% gather(Year, Total, (colnames(grls[-c(1,2)])))
+girls$Gender<-"Girl"
+girls$Year<-sapply(girls$Year,as.numeric)
+girls<- subset(girls, select = -c(Statistic))
+Birth_boys<-boys %>% select(Year,Gender,Total) %>% group_by(Year, Gender) %>% summarise(Birth=sum(Total)) 
+Birth_girls<-girls %>% select(Year,Gender,Total) %>% group_by(Year, Gender) %>% summarise(Birth=sum(Total)) 
+boys$Contribution <- merge(boys, Birth_boys)$Total/merge(boys, Birth_boys)$Birth * 100
+girls$Contribution <- merge(girls, Birth_girls)$Total/merge(girls, Birth_girls)$Birth * 100
+babynames<-rbind(boys,girls)
+babynames$Gender <- as.factor(babynames$Gender)
+```
+
+### Data Preview{.tabset .tabset-pills}
+Below are random samples showing the structure of the cleansed data-set:
+
+```{r}
+#Fetching few samples
+sample_n(babynames,20)
+```
+A factor for the Gender column was produced. The factors are: 
+```{r}
+# Levels in Gender column
+levels(babynames$Gender)
+```
+The time period of the data is 1964 to 2020 inclusive. After transformation, the years converted into numeric and by row.
+```{r}
+# Year column
+unique(babynames$Year)
+```
+Plotting a wordmap, it gives us a general feel for the data. These names have maintained popularity over the last 50 years. The most popular boys names are John, Michael and Patrick. The most popular girls names are Mary, Sarah and Catherine. This wordcloud also that more males were born as their names are more popular on this mapping.
+```{r,message=FALSE, fig.align='center', fig.cap="Wordcloud for the top 100 baby names"}
+### WordCloud of the Names of the boys and girls dataset
+
+name_total <- babynames %>%  select(Names, Total) %>%  group_by(Names) %>% summarise(value=sum(Total)) %>% arrange(-value)
+
+name_total %>%  select(Names, value) %>%  
+  top_n(100) %>%           
+  wordcloud2(size = .5) 
+```
+
+
+## Data Analysis{.tabset .tabset-pills} 
+### Birth Trends{.tabset .tabset-pills}
+
+The number of babies born has evolved over the last 50 years. Notable points in our graph are the peaks in 1980 and another peak in 2008. The year with the minimum number of births is 1998.  \
+The first maximum in 1980, is followed by a sharp decrease in births over the following decade.
+This corresponds to the legalisation of contraception in Ireland in 1980, the Health (Family Planning) Act, the economic depression in the 1980's and 1990's
+and the associated emigration reducing the adult population, reaching a minimum in 1998.\
+
+The second maximum aligns with the height if the economic boom. The graph shows that the number of babies decreased in the following years likely due to the economic recession.
+
+```{r,message=FALSE, warning=FALSE, fig.cap="Total Number of Births", fig.align='center'}
+Birth_total<-babynames %>% select(Year,Gender,Total) %>% group_by(Year) %>% summarise(Birth=sum(Total)) 
+#plot of the total number of births across the years
+ggplot(Birth_total,mapping = aes(x = Year, y = Birth)) +
+  geom_line(colour='#EB2F87') + ggtitle("Total Number of Births Across the Years") + transition_reveal(along = Year)
+
+print('Highest number of births')
+top_births <- Birth_total %>%
+  arrange(-Birth) %>%
+  top_n(10)
+
+top_births
+```
+Above is the years with the highest total births. Four of the top five years with the highest births are recorded around 1980.\
+The years with the lowest total births are as shown below.
+
+```{r,message=FALSE, warning=FALSE}
+# display the year and total birth which has least number of birth's.
+print('Lowest number of births')
+lowest_births <- Birth_total %>%
+  arrange(Birth)
+
+lowest_births
+```
+If the total counts of births are split by gender, it is evident that more males were born each year. On average, there is 8.16% more boys born per year, or an average of 2318 more boys per year.\
+```{r, message=FALSE, fig.cap="Birth Ratio", fig.align='center'}
+BirthDetail<-rbind(Birth_boys, Birth_girls) %>% arrange(Year) 
+# difference in boy and girl babies and plotting the respective points
+ggplot(data = BirthDetail ) +
+  
+geom_point(mapping = aes(x = Year , y = Birth, color =Gender))+scale_color_manual(labels = c("Boy", "Girl"), values = c("#27a2ba", "#fa5a95"))+xlab("Years") + ylab("Total Birth counts")+ggtitle(label="Boy VS Girl Birth Ratio")
+```
+
+### Most Popular Names{.tabset .tabset-pills}
+
+The below plot shows the top 10 Names across the years.
+
+```{r, message=FALSE, warning=FALSE, fig.cap="Top 10 Names", fig.align='center'}
+##Top 10 names of boys
+Boytop10 <-
+  boys %>% group_by(Names) %>% summarise(total = sum(Total)) %>% arrange(-total)
+boysTop <-
+  ggplot(Boytop10[1:10, ], aes(
+    x = reorder(Names, total),
+    y = total,
+    fill = Names
+  )) +
+  geom_col() + coord_flip() + theme(legend.position = "none") + scale_fill_hue(l =40, c = 35) + ggtitle(label = "Top 10 Boy Names") + xlab("Names") + ylab("Total Count")
+#Top 10 girls names and plotting a bargraph
+Girltop10 <-
+  girls %>% group_by(Names) %>% summarise(total = sum(Total)) %>% arrange(-total)
+girlsTop <-
+  ggplot(Girltop10[1:10, ], aes(
+    x = reorder(Names, total),
+    y = total,
+    fill = Names
+  ), beside = TRUE) +
+  geom_col() + coord_flip() + theme(legend.position = "none") + scale_fill_hue(l =
+                                                                                 40, c = 35) + ggtitle(label = "Top 10 Girl Names") + xlab("Names") + ylab("Total Count")
+grid.arrange(boysTop,
+             girlsTop,
+             nrow = 1,
+             ncol = 2,
+             top = "Top 10 Boy and Girl Baby Names in Ireland")
+```
+\
+The data shows that the name "Mary" is the most popular Irish girl baby name that was kept over the years from 1964 to 2020 with more than 45000, while "John" is the most popular Irish boy baby name with more than 70000 Johns named from 1964 to 2020.
+
+The below Shiny app shows the Top 10 popular names for each year from 1964 to 2020.
+```{r, message=FALSE, warning=FALSE,fig.cap = ""}
+ui <- fluidPage(
+   
+   titlePanel("Top 10 Names"),
+   
+   sidebarLayout(
+      sidebarPanel(
+      sliderInput(inputId = "yr",
+                  label = "Select the year:",
+                  min = 1964,
+                  max = 2020,value = 1964),
+      radioButtons("radio", h3("Select the Gender"),
+                   choices = unique(babynames$Gender),selected ="Boy")
+      
+      ),
+      mainPanel(
+         plotOutput("regPlot")
+      )
+   )
+)
+server <- function(input, output) {
+     output$regPlot <- renderPlot({
+       if(input$radio=="Boy"){
+          x<-babynames %>% select(Year,Names,Gender,Total) %>%  arrange(-Total) %>% filter(Year==input$yr,Gender==input$radio)
+       ggplot(x[1:10,], aes(x=reorder(Names,-Total),y=Total,fill=Names)) +
+      geom_col()+ xlab("Top 10 Boys Names") + ylab("Total count")
+       }
+       else{
+         x<-babynames %>% select(Year,Names,Gender,Total) %>%  arrange(-Total) %>% filter(Year==input$yr,Gender==input$radio)
+       ggplot(x[1:10,], aes(x=reorder(Names,-Total),y=Total,fill=Names)) +
+      geom_col()+scale_fill_hue(l =30, c = 20)+ xlab("Top 10 Girls Names") + ylab("Total count")
+       
+       }
+       })
+}
+shinyApp(ui = ui, server = server, options=list(height=500))
+```
+\
+The below graphs show the most popular names for each year. Earlier years show a much larger contribution from the most popular names, likely because there is simply less variation of names back then. Biblical names dominate the earlier years with John and David topping the list for boys and Mary and Sarah for girls before the turn of the millennium. Boys names start to be taken over by Celtic names such as Conor and Sean starting around 1995, around the time of the Celtic Tiger which may be related to this increase.
+\
+By splitting the dataset into decade-long chunks and separating the names based on which decade had the first occurrence of a name, trends in the newer names begin to be introduced to Ireland. The first few groups show the original most popular names, many of which are of Christian or Celtic origin around the 80s and 90s, and Americanised names like Jake, Brandon, Bill, Kayleigh and Tori begin dripping in. After the turn of the millennium, there are many new names from all different origins as globalisation takes place. The last chunk which groups the 2010s is cut short at 2017 as the data after is skewed due to the CSO introducing names with non-English characters in 2018, such as Sean being split with Séan.
+```{r, message=FALSE, warning=FALSE}
+# Splitting decades
+names_male <- unique(boys$Names)
+names_female <- unique(girls$Names)
+years <- unique(babynames$Year)
+group1 <- years[1:7]
+group2 <- years[8:17]
+group3 <- years[18:27]
+group4 <- years[28:37]
+group5 <- years[38:47]
+group6 <- years[48:54]
+# Male
+temp <- boys
+male_group <- subset(temp, temp$Year %in% group1)
+names_male_totals <- male_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_male_totals <- subset(names_male_totals, names_male_totals$Birth != 0)
+names_male_group1 <- names_male[names_male %in% names_male_totals$Names]
+male_group1 <- subset(male_group, male_group$Names %in% names_male_group1)
+temp <- temp[!(temp$Names %in% names_male_group1),]
+male_group <- subset(temp, temp$Year %in% group2)
+names_male_totals <- male_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_male_totals <- subset(names_male_totals, names_male_totals$Birth != 0)
+names_male_group2 <- names_male[names_male %in% names_male_totals$Names]
+male_group2 <- subset(male_group, male_group$Names %in% names_male_group2)
+temp <- temp[!(temp$Names %in% names_male_group2),]
+male_group <- subset(temp, temp$Year %in% group3)
+names_male_totals <- male_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_male_totals <- subset(names_male_totals, names_male_totals$Birth != 0)
+names_male_group3 <- names_male[names_male %in% names_male_totals$Names]
+male_group3 <- subset(male_group, male_group$Names %in% names_male_group3)
+temp <- temp[!(temp$Names %in% names_male_group3),]
+male_group <- subset(temp, temp$Year %in% group4)
+names_male_totals <- male_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_male_totals <- subset(names_male_totals, names_male_totals$Birth != 0)
+names_male_group4 <- names_male[names_male %in% names_male_totals$Names]
+male_group4 <- subset(male_group, male_group$Names %in% names_male_group4)
+temp <- temp[!(temp$Names %in% names_male_group4),]
+male_group <- subset(temp, temp$Year %in% group5)
+names_male_totals <- male_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_male_totals <- subset(names_male_totals, names_male_totals$Birth != 0)
+names_male_group5 <- names_male[names_male %in% names_male_totals$Names]
+male_group5 <- subset(male_group, male_group$Names %in% names_male_group5)
+temp <- temp[!(temp$Names %in% names_male_group5),]
+male_group <- subset(temp, temp$Year %in% group6)
+names_male_totals <- male_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_male_totals <- subset(names_male_totals, names_male_totals$Birth != 0)
+names_male_group6 <- names_male[names_male %in% names_male_totals$Names]
+male_group6 <- subset(male_group, male_group$Names %in% names_male_group6)
+temp <- temp[!(temp$Names %in% names_male_group6),]
+# Female
+temp <- girls
+female_group <- subset(temp, temp$Year %in% group1)
+names_female_totals <- female_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_female_totals <- subset(names_female_totals, names_female_totals$Birth != 0)
+names_female_group1 <- names_female[names_female %in% names_female_totals$Names]
+female_group1 <- subset(female_group, female_group$Names %in% names_female_group1)
+temp <- temp[!(temp$Names %in% names_female_group1),]
+female_group <- subset(temp, temp$Year %in% group2)
+names_female_totals <- female_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_female_totals <- subset(names_female_totals, names_female_totals$Birth != 0)
+names_female_group2 <- names_female[names_female %in% names_female_totals$Names]
+female_group2 <- subset(female_group, female_group$Names %in% names_female_group2)
+temp <- temp[!(temp$Names %in% names_female_group2),]
+female_group <- subset(temp, temp$Year %in% group3)
+names_female_totals <- female_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_female_totals <- subset(names_female_totals, names_female_totals$Birth != 0)
+names_female_group3 <- names_female[names_female %in% names_female_totals$Names]
+female_group3 <- subset(female_group, female_group$Names %in% names_female_group3)
+temp <- temp[!(temp$Names %in% names_female_group3),]
+female_group <- subset(temp, temp$Year %in% group4)
+names_female_totals <- female_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_female_totals <- subset(names_female_totals, names_female_totals$Birth != 0)
+names_female_group4 <- names_female[names_female %in% names_female_totals$Names]
+female_group4 <- subset(female_group, female_group$Names %in% names_female_group4)
+temp <- temp[!(temp$Names %in% names_female_group4),]
+female_group <- subset(temp, temp$Year %in% group5)
+names_female_totals <- female_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_female_totals <- subset(names_female_totals, names_female_totals$Birth != 0)
+names_female_group5 <- names_female[names_female %in% names_female_totals$Names]
+female_group5 <- subset(female_group, female_group$Names %in% names_female_group5)
+temp <- temp[!(temp$Names %in% names_female_group5),]
+female_group <- subset(temp, temp$Year %in% group6)
+names_female_totals <- female_group %>% select(Year,Names,Total) %>% group_by(Names) %>% summarise(Birth=sum(Total)) 
+names_female_totals <- subset(names_female_totals, names_female_totals$Birth != 0)
+names_female_group6 <- names_female[names_female %in% names_female_totals$Names]
+female_group6 <- subset(female_group, female_group$Names %in% names_female_group6)
+temp <- temp[!(temp$Names %in% names_female_group6),]
+# Displaying Groups
+top_male_group1 <- male_group1 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_male_group2 <- male_group2 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_male_group3 <- male_group3 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_male_group4 <- male_group4 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_male_group5 <- male_group5 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_male_group6 <- male_group6 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_female_group1 <- female_group1 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_female_group2 <- female_group2 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_female_group3 <- female_group3 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_female_group4 <- female_group4 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_female_group5 <- female_group5 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+top_female_group6 <- female_group6 %>% select(Year, Names, Total) %>% group_by(Names) %>% 
+  summarise(Birth = sum(Total)) %>% arrange(desc(Birth))
+options <- c("1960s Boys", "1970s Boys", "1980s Boys", "1990s Boys", "2000s Boys", "2010s Boys", 
+             "1960s Girls", "1970s Girls", "1980s Girls", "1990s Girls", "2000s Girls", "2010s Girls")
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("Decade Trends"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("select", h3("Select the Gender/Decade"),
+                   choices = options, selected ="1960s Boys")
+    ),
+    
+    # Show a plot of the data
+    mainPanel(
+      tableOutput("table")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$table <- renderTable({
+    if (input$select=="1960s Boys") {
+      top_male_group1[1:10,]
+    }
+    else if (input$select=="1970s Boys"){
+      top_male_group2[1:10,]
+    }
+    else if (input$select=="1980s Boys"){
+      top_male_group3[1:10,]
+    }
+    else if (input$select=="1990s Boys"){
+      top_male_group4[1:10,]
+    }
+    else if (input$select=="2000s Boys"){
+      top_male_group5[1:10,]
+    }
+    else if (input$select=="2010s Boys"){
+      top_male_group6[1:10,]
+    }
+    else if (input$select=="1960s Girls"){
+      top_female_group1[1:10,]
+    }
+    else if (input$select=="1970s Girls"){
+      top_female_group2[1:10,]
+    }
+    else if (input$select=="1980s Girls"){
+      top_female_group3[1:10,]
+    }
+    else if (input$select=="1990s Girls"){
+      top_female_group4[1:10,]
+    }
+    else if (input$select=="2000s Girls"){
+      top_female_group5[1:10,]
+    }
+    else if (input$select=="2010s Girls"){
+      top_female_group6[1:10,]
+    }
+  })
+}
+shinyApp(ui = ui, server = server, options=list(height=500))
+```
+
+### Analysis of the Names{.tabset .tabset-pills}
+Parents tend to keep names on the shorter side, the graph shows that historically the most common names are of length 4-7 across both genders with a steep drop off after 8+ characters.
+
+```{r, message=FALSE, warning=FALSE, fig.cap="Name Length Analysis", fig.align='center'}
+##Name Length
+boys_name_len<-data.frame(boys,length=str_length(boys$Names))
+girls_name_len<-data.frame(girls,length=str_length(girls$Names))
+# Display the bar graph to display the various length of boys name.
+boys_len<-ggplot(boys_name_len,aes(length))+geom_bar(fill="#1D67FC")+labs(x="Name Length-Boys", y="Total Count") + ggtitle("Boys Name Length Analysis")
+# Display the bar graph to display the various length of girls name.
+girls_len<-ggplot(girls_name_len,aes(length))+geom_bar(fill="#D30AE3")+labs(x="Name Length-Girls", y="Total Count") + ggtitle("Girls Name Length Analysis")
+grid.arrange(boys_len,girls_len,nrow=1,ncol=2,top="Boys and Girls Baby Names Length Comparision")
+```
+\
+The most common starting letters for boy names in Ireland are J, D, C, M, A and for girl names they are A, M, C, S, E.
+These line up with the most popular names found in the previous sections, e.g., John, Michael and Aoife Catherine would contribute massively to their respective letters.
+The rare occurrence Starting letters for both Boys and Girls are Á,Q,U, and X.
+
+```{r, message=FALSE, warning=FALSE, fig.cap="Starting Letter of the Baby Names", fig.align='center'}
+#To Store the Starting Boy Name letter's
+boys$Letter <- str_sub(boys1$Names,1,1)
+boys_alpha_table <- boys %>% select(Total, Letter) %>% group_by(Letter) %>% summarise(Freq = sum(Total))
+boys_alpha_table <- as.data.frame(boys_alpha_table)
+#To Visualize the Starting alphabet of boy's name using ggplot funtion.
+bl<-ggplot(boys_alpha_table,aes(Letter,Freq))+geom_bar(stat="identity",fill="#27a2ba")+labs(x="Starting Letter of Boys Names",y="Total Count")
+#To Store the Starting Girl's Name letter's
+girls$Letter <- str_sub(grls$Names,1,1)
+girls_alpha_table <- girls %>% select(Total, Letter) %>% group_by(Letter) %>% summarise(Freq = sum(Total))
+girls_alpha_table <- as.data.frame(girls_alpha_table)
+#To Visualize the Starting alphabet of Girl's name using ggplot funtion.
+gl<-ggplot(girls_alpha_table,aes(Letter,Freq))+geom_bar(stat="identity",fill="#fa5a95")+labs(x="Starting Letter of Girls Names",y="Total Count")
+#Combing both Starting letter Graphs for each gender in a  2:1 grid.
+grid.arrange(bl,gl,ncol=1,nrow=2,top="Starting Letter of the Baby Names in Ireland ")
+```
+\
+
+Interestingly, despite there being consistently more boys than girls each year, there is a wider variety of girl names than boy names, with an upward trend through the years, especially after 2000 as more foreign names are registered.
+```{r, message=FALSE, warning=FALSE, fig.cap="Naming Trends", fig.align='center'}
+boy_var <- subset(babynames, !(babynames$Total == 0)) %>% select(Year, Gender) %>% group_by(Year) %>% summarise(Variety = sum(Gender == "Boy"))
+girl_var <- subset(babynames, !(babynames$Total == 0)) %>% select(Year, Gender) %>% group_by(Year) %>% summarise(Variety = sum(Gender == "Girl"))
+boy_var$Gender <- "Boy"
+girl_var$Gender <- "Girl"
+variety <- rbind(boy_var, girl_var)
+ggplot(data = variety, mapping = aes(x = Year, y = Variety)) + 
+  geom_line(aes(color = Gender)) + ggtitle("Name Trends")+ theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+### Individual Name Popularities{.tabset .tabset-pills}
+The below shiny app shows the popularity for some names throughout the years from 1964 to 2020.
+In this, a subset of names were selected that had noticeable spikes and dips in popularity, changes greater than 0.9% to their contribution to all names in a year. John and Paul had big drops in 1965 and a big spike around 1978, coinciding with the Second Vatican Council (Vatican II) in 1965 and Pope John Paul I and Pope John Paul II both entering papacy in 1978, followed by Pope John Paul II's visit to Ireland in 1979.
+The most popular girl baby name Mary has a decreasing graph throughout the years since Vatican II.
+Sean, Oisin and Shannon all see a growing rise in popularity around the mid 1990s when the Celtic Tiger was happening. Sean and Oisin also see massive drops in 2018 when the CSO added accented names as separate entries.
+Very noticeably there was a huge spike for Oliver and Olivia in 1975, when Saint Oliver Plunkett was canonised.\
+
+```{r, message=FALSE, warning=FALSE}
+m_change <- boys %>% arrange(Names, Year) %>% group_by(Names) %>% 
+  mutate(Change = Contribution - lag(Contribution))
+m <- m_change %>% select(Year, Names, Change) %>% filter(!(is.na(Change)))
+f_change <- girls %>% arrange(Names, Year) %>% group_by(Names) %>% 
+  mutate(Change = Contribution - lag(Contribution))
+f <- f_change %>% select(Year, Names, Change) %>% filter(!(is.na(Change)))
+m[abs(m$Change) > 0.9,]
+f[abs(f$Change) > 0.9,]
+```
+
+The popularity of individual is as shown in the shiny app below:
+```{r, message=FALSE}
+ui <- fluidPage(
+   
+   titlePanel("Baby Names"),
+   
+   sidebarLayout(
+      sidebarPanel(
+         selectInput("select", h3("Select Name"), 
+                  choices = c("John", "Mary", "Paul", "Sean", "Oisin", "Oliver",  "Olivia", "Chloe", "Shannon", "Sinead", "Emma"))
+      ),
+        mainPanel(
+         plotOutput("regPlot")
+      )
+   )
+)
+server <- function(input, output) {
+  output$regPlot <- renderPlot({
+    x1 <-
+      babynames %>% select(Year, Names, Gender, Contribution) %>% filter(Names == input$select)
+    ggplot(x1, aes(x = Year, y = Contribution)) + geom_line(color = "blue") +
+      xlab("Years") + ylab("Total")
+    
+   })
+     
+  }
+shinyApp(ui = ui, server = server, options=list(height=500))
+```
+
+### Gender Neutral & Immigration
+In our dataset, it was found that some names have been used for both genders, although most of them are heavily dominated in use by one gender, like Jude or Terry. Names with a more even distribution across genders were isolated to look for interesting patterns. Looking at names like Casey, Harley and Bailey, there is a bit of a trend where names used across genders become more common after the turn of the millennium, as traditional gender roles are seen as less of a restriction.
+```{r, message=FALSE, warning=FALSE}
+unisex_df <- inner_join(boys, girls, by=c("Names","Year") ,all.y = TRUE,all.x = TRUE)
+selected_unisex_names <- c("Jude","Terry","Ali","Naoise","Bailey","Brooklyn","Riley","Robin","Casey","Regan","Harley")
+selected_unisex_names <- babynames %>%
+filter(Names %in% unique(selected_unisex_names)) %>% group_by(Names)
+ui <- fluidPage(
+  titlePanel("Gender-Neutral Names"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("select", h3("Names"), 
+      choices = unique(selected_unisex_names$Names))),
+    mainPanel(
+      plotOutput("regPlot")
+    )
+  )
+)
+server <- function(input, output) {
+output$regPlot <- renderPlot({
+x2<-selected_unisex_names %>% select(Year,Names,Gender,Total) %>% filter(Names==input$select)
+ggplot(x2,aes(x=Year,y=Total)) +
+   geom_line(aes(color = Gender)) + 
+   geom_point(aes(color = Gender)) + 
+  xlab("Years") + 
+  ylab("Total")
+})
+}
+shinyApp(ui = ui, server = server, options=list(height=500))
+```
+\
+__Name Origins__
+\
+By sub-setting the data manually into different origins, a clear trend where European names (Spanish and Greek) have been in Ireland from since before this dataset begins, Greek names show a similar trend to most other names where they begin to fall in popularity over time as more varied names become introduced, while Spanish names actually increase in usage, likely following the trend where global names are entering the dataset as well from many Spanish speaking countries, there is an increase of African and Asian names around the 1990s as second generation immigrant families start to take root.
+
+```{r, message=FALSE, warning=FALSE, fig.cap="Immigration Data", fig.align='center'}
+babynames_type_subset <- read_csv("Types_Babynames.csv")
+babynames_type_subset_total <- babynames_type_subset %>% select(Names,Type,Total) %>% group_by(Names,Type) %>% summarise(value=sum(Total)) %>% arrange(-value)
+Immigrants<- babynames_type_subset %>% filter(Type != "Biblical" & Type != "Celebrity") %>% group_by(Year,Type) %>% summarise(n = sum(Total))
+#Normalised n for proper graphs
+ggplot(Immigrants,aes(x=Year,y=sqrt(n),colour=Type))+
+geom_line() + geom_point()+labs(x="Year",y="Immigrants Count") + ggtitle("Immigration Analysis")
+
+
+```
+
+## Conclusion{.tabset .tabset-pills} 
+There is a notable disparity in the data between boys and girls, where there are significantly more boys born and a wider variety of girl names each year.\
+A few notable trends in naming conventions have been identified and correlated with some major events in Irish history: \
+* Vatican II in 1965 started a downward trend in Biblical and Saint names. \
+* The canonisation of Oliver Plunkett in 1975 matches the largest spike in our data with Oliver and Olivia. \
+* The legalisation of contraception and the depression of 1980 precedes the fall in birth rate for the next two decades. \
+* The Celtic Tiger years starting in 1995 saw a rise in popularity for names with Irish origins, even some that had not been seen before like Fiadh. \
+* Our subset analysis also helps show the rise in foreign names post-2000 as Irish society becomes a more global society, as well as names being used across genders as the newer generation holds traditional gender roles with lower regard.
